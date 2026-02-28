@@ -1,0 +1,14 @@
+<!-- Account card partial -->
+<div class="bg-surface-900/50 rounded-xl p-3.5 border border-white/5">
+    <div class="flex items-center justify-between">
+        <div>
+            <div class="text-sm font-semibold">#{{ account.login }}</div>
+            <div class="text-[10px] text-gray-400">{{ account.server }}</div>
+        </div>
+        <div class="flex items-center gap-1.5">
+            <div class="w-1.5 h-1.5 rounded-full {{ 'bg-profit' if account.enabled else 'bg-loss' }}"></div>
+            <span class="text-[10px] {{ 'text-profit' if account.enabled else 'text-loss' }}">{{ 'Active' if
+                account.enabled else 'Disabled' }}</span>
+        </div>
+    </div>
+</div>

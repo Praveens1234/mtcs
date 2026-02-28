@@ -1,0 +1,13 @@
+<!-- Quote row partial -->
+<div class="bg-surface-900/50 rounded-xl p-3.5 border border-white/5 hover:border-accent/30 transition-all">
+    <div class="flex items-center justify-between">
+        <div>
+            <div class="font-semibold text-sm">{{ quote.symbol }}</div>
+            <div class="text-[10px] text-gray-500 mt-0.5">Spread: {{ '%.5f'|format(quote.spread) }}</div>
+        </div>
+        <div class="text-right font-mono">
+            <div class="text-xs text-loss">{{ quote.bid }}</div>
+            <div class="text-xs text-profit">{{ quote.ask }}</div>
+        </div>
+    </div>
+</div>

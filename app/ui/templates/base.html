@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MTCS v2 | Parallel Copy Trading</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Scripts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/app.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0a0e17',
+                            800: '#111827',
+                            700: '#1f2937',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="text-slate-200 antialiased selection:bg-blue-500/30" x-data="mtcsApp()">
+
+    <!-- Global SSE Connection -->
+    <div hx-ext="sse" sse-connect="/api/v1/sse" @sse:message.window="handleGlobalEvent($event)"
+        @sse:error.window="handleSseError($event)">
+
+        <!-- Sidebar Layout -->
+        <div class="sidebar-layout">
+
+            <!-- Desktop Sidebar -->
+            <aside class="sidebar hidden md:flex">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold outfit text-gradient tracking-tight">MTCS v2</h1>
+                    <p class="text-xs text-slate-400 mt-1 uppercase tracking-wider">Parallel Engine</p>
+                </div>
+
+                <nav class="flex-1 mt-6 flex flex-col gap-2">
+                    <a href="/dashboard" class="nav-item {{ 'active' if active_tab == 'dashboard' else '' }}">
+                        <i data-feather="grid" class="w-5 h-5 mr-3"></i> Dashboard
+                    </a>
+                    <a href="/accounts" class="nav-item {{ 'active' if active_tab == 'accounts' else '' }}">
+                        <i data-feather="users" class="w-5 h-5 mr-3"></i> Accounts
+                    </a>
+                    <a href="/history" class="nav-item {{ 'active' if active_tab == 'history' else '' }}">
+                        <i data-feather="list" class="w-5 h-5 mr-3"></i> History
+                    </a>
+                    <a href="/quotes" class="nav-item {{ 'active' if active_tab == 'quotes' else '' }}">
+                        <i data-feather="trending-up" class="w-5 h-5 mr-3"></i> Quotes
+                    </a>
+                </nav>
+
+                <div class="p-4 mb-4">
+                    <a href="/settings" class="nav-item {{ 'active' if active_tab == 'settings' else '' }}">
+                        <i data-feather="settings" class="w-5 h-5 mr-3"></i> Settings
+                    </a>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="main-content relative">
+                <!-- Mobile Header -->
+                <header
+                    class="md:hidden glass-panel sticky top-0 z-50 px-5 py-4 flex items-center justify-between border-b-0">
+                    <div>
+                        <h1 class="text-xl font-bold outfit text-gradient">MTCS v2</h1>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="flex h-3 w-3 relative">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                        </span>
+                    </div>
+                </header>
+
+                <!-- Content Injection -->
+                <div
+                    class="flex-1 p-4 md:p-8 lg:p-10 max-w-7xl mx-auto w-full animate-fade-in relative z-10 pb-24 md:pb-8">
+                    {% block content %}{% endblock %}
+                </div>
+
+
+            </main>
+
+            <!-- Mobile Bottom Nav -->
+            <nav class="md:hidden glass-panel fixed bottom-0 left-0 right-0 z-50 pb-safe">
+                <div class="flex justify-around items-center p-2">
+                    <a href="/dashboard"
+                        class="flex flex-col items-center p-2 {{ 'text-blue-400' if active_tab == 'dashboard' else 'text-slate-400' }}">
+                        <i data-feather="grid" class="w-6 h-6 mb-1"></i>
+                        <span class="text-[10px] font-medium">Dash</span>
+                    </a>
+                    <a href="/accounts"
+                        class="flex flex-col items-center p-2 {{ 'text-blue-400' if active_tab == 'accounts' else 'text-slate-400' }}">
+                        <i data-feather="users" class="w-6 h-6 mb-1"></i>
+                        <span class="text-[10px] font-medium">Accts</span>
+                    </a>
+                    <a href="/history"
+                        class="flex flex-col items-center p-2 {{ 'text-blue-400' if active_tab == 'history' else 'text-slate-400' }}">
+                        <i data-feather="list" class="w-6 h-6 mb-1"></i>
+                        <span class="text-[10px] font-medium">Hist</span>
+                    </a>
+                    <a href="/quotes"
+                        class="flex flex-col items-center p-2 {{ 'text-blue-400' if active_tab == 'quotes' else 'text-slate-400' }}">
+                        <i data-feather="trending-up" class="w-6 h-6 mb-1"></i>
+                        <span class="text-[10px] font-medium">Quotes</span>
+                    </a>
+                    <a href="/settings"
+                        class="flex flex-col items-center p-2 {{ 'text-blue-400' if active_tab == 'settings' else 'text-slate-400' }}">
+                        <i data-feather="settings" class="w-6 h-6 mb-1"></i>
+                        <span class="text-[10px] font-medium">Config</span>
+                    </a>
+                </div>
+            </nav>
+
+        </div>
+    </div>
+
+    <!-- Alpine JS App Data -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            feather.replace();
+        });
+
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            feather.replace();
+        });
+
+        function mtcsApp() {
+            return {
+                init() {
+                    console.log("MTCS v2 App Initialized");
+                },
+                handleGlobalEvent(e) {
+                    if (e.detail.type === 'message') {
+                        const data = JSON.parse(e.detail.data);
+                        if (navigator.vibrate && (data.event === 'trade_open' || data.event === 'trade_close')) {
+                            navigator.vibrate([20, 30, 20]);
+                        }
+                    }
+                },
+                handleSseError(e) {
+                    console.error("SSE Connection Error", e);
+                }
+            }
+        }
+    </script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>

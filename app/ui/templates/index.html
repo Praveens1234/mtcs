@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-md mx-auto mt-12 animate-fade-in" x-data="setupWizard()">
+    <div class="text-center mb-8">
+        <h2 class="text-3xl font-bold outfit text-gradient">MTCS Engine</h2>
+        <p class="text-gray-400 mt-2">Connect your master account to begin</p>
+    </div>
+
+    <div class="glass-card p-6 md:p-8 relative overflow-hidden">
+
+        <!-- Decorative bg -->
+        <div
+            class="absolute -top-24 -right-24 w-48 h-48 bg-blue-500 rounded-full mix-blend-multiply filter blur-[64px] opacity-20">
+        </div>
+
+        <form @submit.prevent="submit" class="space-y-5 relative px-2">
+
+            <div x-show="error" style="display: none;"
+                class="bg-danger/10 border border-danger/30 text-danger px-4 py-3 rounded-xl text-sm flex items-start">
+                <i data-feather="alert-circle" class="w-5 h-5 mr-2 shrink-0"></i>
+                <span x-text="error"></span>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Account Login (Master)</label>
+                <div class="relative">
+                    <i data-feather="user" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
+                    <input type="number" x-model="login" required class="w-full pl-10 pr-4 py-3 glass-input"
+                        placeholder="e.g. 12345678">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Password</label>
+                <div class="relative">
+                    <i data-feather="lock" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
+                    <input type="password" x-model="password" required class="w-full pl-10 pr-4 py-3 glass-input"
+                        placeholder="Trading password">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Server</label>
+                <div class="relative">
+                    <i data-feather="server" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
+                    <input type="text" x-model="server" required class="w-full pl-10 pr-4 py-3 glass-input"
+                        placeholder="e.g. Exness-MT5Trial">
+                </div>
+            </div>
+
+            <button type="submit" :disabled="loading"
+                class="w-full flex items-center justify-center py-3 px-4 rounded-xl font-medium focus:outline-none transition-all duration-300 mt-8"
+                :class="loading ? 'bg-blue-600/50 cursor-not-allowed' : 'bg-gradient-accent hover:shadow-[0_0_20px_rgba(59,130,246,0.5)]'">
+                <i x-show="loading" data-feather="loader" class="w-5 h-5 mr-2 animate-spin" style="display:none;"></i>
+                <span x-text="loading ? 'Connecting...' : 'Connect Master Account'"></span>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    function setupWizard() {
+        return {
+            login: '',
+            password: '',
+            server: '',
+            role: 'master',
+            loading: false,
+            error: '',
+
+            async submit() {
+                this.loading = true;
+                this.error = '';
+
+                const formData = new FormData();
+                formData.append('login', this.login.trim());
+                formData.append('password', this.password.trim());
+                formData.append('server', this.server.trim());
+                formData.append('role', 'master');
+
+                try {
+                    const res = await fetch('/api/v1/accounts/add', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success && data.mt5_validated) {
+                        window.location.href = '/dashboard';
+                    } else {
+                        this.error = data.mt5_message || data.error || 'Failed to connect. Check credentials.';
+                    }
+                } catch (err) {
+                    this.error = 'Network error occurred.';
+                } finally {
+                    this.loading = false;
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

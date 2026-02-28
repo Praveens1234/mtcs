@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6" x-data="quotesPanel()" x-init="init()">
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
+        <h2 class="text-2xl font-bold outfit">Live Quotes</h2>
+
+        <div class="glass-card flex items-center p-1 rounded-xl w-full md:w-64 relative">
+            <i data-feather="search" class="w-4 h-4 text-slate-400 absolute left-3"></i>
+            <input type="text" x-model="searchQuery" @keyup.enter="addSymbol" placeholder="Add symbol (e.g. BTCUSD)"
+                class="w-full bg-transparent border-0 text-sm px-9 py-1.5 focus:outline-none text-white">
+            <button @click="addSymbol"
+                class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors absolute right-1">
+                <i data-feather="plus" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="glass-card overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm whitespace-nowrap">
+                <thead class="bg-black/40 text-[10px] uppercase tracking-wider text-slate-400 border-b border-white/5">
+                    <tr>
+                        <th class="px-5 py-3 font-medium">Symbol</th>
+                        <th class="px-5 py-3 font-medium text-right">Bid (Sell)</th>
+                        <th class="px-5 py-3 font-medium text-right">Ask (Buy)</th>
+                        <th class="px-5 py-3 font-medium text-right">Spread</th>
+                        <th class="px-5 py-3 font-medium text-right">Volume</th>
+                        <th class="px-5 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    <template x-for="quote in quotes" :key="quote.symbol">
+                        <tr class="hover:bg-white/[0.02] transition-colors group">
+                            <td class="px-5 py-3 font-bold text-white text-base font-mono flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                                <span x-text="quote.symbol"></span>
+                            </td>
+                            <td class="px-5 py-3 text-right">
+                                <button @click="openTradeModal(quote.symbol, 'sell')"
+                                    class="px-3 py-1.5 rounded-lg bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/20 font-mono font-bold text-base transition-colors w-28 text-center"
+                                    x-text="quote.bid > 0 ? quote.bid.toFixed(5) : '---'"></button>
+                            </td>
+                            <td class="px-5 py-3 text-right">
+                                <button @click="openTradeModal(quote.symbol, 'buy')"
+                                    class="px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 font-mono font-bold text-base transition-colors w-28 text-center"
+                                    x-text="quote.ask > 0 ? quote.ask.toFixed(5) : '---'"></button>
+                            </td>
+                            <td class="px-5 py-3 text-right font-mono text-slate-400 text-xs text-center"
+                                x-text="(quote.ask - quote.bid).toFixed(5)"></td>
+                            <td class="px-5 py-3 text-right font-mono text-slate-400 text-xs" x-text="quote.volume">
+                            </td>
+                            <td class="px-5 py-3 text-right">
+                                <button @click="removeSymbol(quote.symbol)"
+                                    class="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded transition-colors tooltip"
+                                    title="Remove Symbol">
+                                    <i data-feather="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="quotes.length === 0">
+                        <tr>
+                            <td colspan="6" class="px-5 py-12 text-center">
+                                <i data-feather="monitor" class="w-8 h-8 mx-auto text-slate-600 mb-3"></i>
+                                <p class="text-sm text-slate-400">No symbols mapped. Add symbols above to track quotes.
+                                </p>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Quick Trade Modal -->
+    <div x-show="tradeModal.open"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        style="display: none;">
+        <div @click.away="tradeModal.open = false"
+            class="bg-slate-900 border border-t border-slate-700/50 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative">
+
+            <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                <h3 class="font-bold text-white flex items-center gap-2">
+                    <i data-feather="mouse-pointer" class="w-4 h-4 text-blue-400"></i>
+                    Execute Trade: <span x-text="tradeModal.symbol" class="font-mono text-blue-300"></span>
+                </h3>
+                <button @click="tradeModal.open = false" class="text-slate-500 hover:text-white transition-colors"><i
+                        data-feather="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="p-5">
+                <form @submit.prevent="submitQuickOrder" class="space-y-4">
+                    <div class="grid grid-cols-1 gap-3">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-xs font-semibold text-slate-400">Volume</label>
+                                <div class="flex gap-1">
+                                    <button type="button" @click="tradeModal.volume = 0.01"
+                                        class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 font-mono transition-colors">.01</button>
+                                    <button type="button" @click="tradeModal.volume = 0.10"
+                                        class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 font-mono transition-colors">.10</button>
+                                    <button type="button" @click="tradeModal.volume = 1.00"
+                                        class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 font-mono transition-colors">1.0</button>
+                                </div>
+                            </div>
+                            <div class="relative flex items-center">
+                                <button type="button"
+                                    @click="tradeModal.volume = Math.max(0.01, tradeModal.volume - 0.01)"
+                                    class="absolute left-1 w-7 h-7 flex items-center justify-center rounded bg-black/20 hover:bg-black/40 text-slate-400 font-mono transition-colors">-</button>
+                                <input type="number" step="0.01" min="0.01" x-model.number="tradeModal.volume" required
+                                    class="w-full glass-input px-9 py-2.5 font-mono text-sm text-center font-bold">
+                                <button type="button" @click="tradeModal.volume = tradeModal.volume + 0.01"
+                                    class="absolute right-1 w-7 h-7 flex items-center justify-center rounded bg-black/20 hover:bg-black/40 text-slate-400 font-mono transition-colors">+</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 mt-2">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Stop Loss</label>
+                                <input type="number" step="0.00001" x-model="tradeModal.sl"
+                                    class="w-full glass-input px-3 py-2 font-mono text-sm" placeholder="0.00000">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Take Profit</label>
+                                <input type="number" step="0.00001" x-model="tradeModal.tp"
+                                    class="w-full glass-input px-3 py-2 font-mono text-sm" placeholder="0.00000">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-show="tradeModal.msg" class="text-[10px] font-mono p-2 rounded bg-black/40 border mt-3"
+                        :class="tradeModal.success ? 'text-emerald-400 border-emerald-500/30' : 'text-red-400 border-red-500/30'"
+                        x-text="tradeModal.msg">
+                    </div>
+
+                    <div class="pt-4">
+                        <button type="submit" :disabled="tradeModal.loading"
+                            class="w-full py-3 rounded-xl font-bold border flex justify-center items-center transition-all disabled:opacity-50 uppercase text-white shadow-lg"
+                            :class="tradeModal.direction === 'buy' ? 'bg-blue-600 hover:bg-blue-500 border-blue-500/50' : 'bg-pink-600 hover:bg-pink-500 border-pink-500/50'">
+                            <span x-show="!tradeModal.loading"
+                                x-text="(tradeModal.direction === 'buy' ? 'BUY : ' : 'SELL : ') + tradeModal.symbol"></span>
+                            <span x-show="tradeModal.loading"><i data-feather="loader"
+                                    class="w-5 h-5 animate-spin"></i></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    function quotesPanel() {
+        return {
+            quotes: [],
+            searchQuery: '',
+            tradeModal: { open: false, symbol: '', direction: 'buy', volume: 0.01, sl: '', tp: '', loading: false, msg: '', success: false },
+
+            init() {
+                this.loadQuotes();
+                setInterval(() => this.loadQuotes(), 1000); // 1s refresh for live feel
+            },
+
+            async loadQuotes() {
+                try {
+                    const res = await fetch('/api/v1/dashboard/quotes');
+                    const data = await res.json();
+                    this.quotes = data.quotes || [];
+                } catch (e) { }
+            },
+
+            async addSymbol() {
+                if (!this.searchQuery) return;
+                try {
+                    await fetch('/api/v1/settings/watchlist/add', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbol: this.searchQuery.toUpperCase() })
+                    });
+                    this.searchQuery = '';
+                    await this.loadQuotes();
+                } catch (e) { }
+            },
+
+            async removeSymbol(symbol) {
+                try {
+                    await fetch('/api/v1/settings/watchlist/remove', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbol: symbol })
+                    });
+                    await this.loadQuotes();
+                } catch (e) { }
+            },
+
+            openTradeModal(symbol, direction) {
+                this.tradeModal.symbol = symbol;
+                this.tradeModal.direction = direction;
+                this.tradeModal.volume = 0.01;
+                this.tradeModal.sl = '';
+                this.tradeModal.tp = '';
+                this.tradeModal.msg = '';
+                this.tradeModal.loading = false;
+                this.tradeModal.open = true;
+            },
+
+            async submitQuickOrder() {
+                this.tradeModal.loading = true;
+                this.tradeModal.msg = '';
+                this.tradeModal.success = false;
+
+                try {
+                    const res = await fetch('/api/v1/trading/order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            login: 0, // Master
+                            symbol: this.tradeModal.symbol,
+                            order_type: "market",
+                            type: this.tradeModal.direction,
+                            volume: this.tradeModal.volume,
+                            price_open: 0,
+                            sl: this.tradeModal.sl || 0,
+                            tp: this.tradeModal.tp || 0
+                        })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        this.tradeModal.success = true;
+                        this.tradeModal.msg = `Executed ${this.tradeModal.direction.toUpperCase()} ${this.tradeModal.volume} ${this.tradeModal.symbol}`;
+                        setTimeout(() => { if (this.tradeModal.open) this.tradeModal.open = false; }, 1500);
+                    } else {
+                        this.tradeModal.msg = `Error: ${data.error || 'Failed to send'}`;
+                    }
+                } catch (e) {
+                    this.tradeModal.msg = "Network Request Failed";
+                } finally {
+                    this.tradeModal.loading = false;
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}

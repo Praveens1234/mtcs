@@ -1,0 +1,664 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6" x-data="dashboardPanel()" x-init="init()"
+    @keydown.window.shift.b.prevent="if(!posModal.open && manualTrade.order_type === 'market') submitManualOrder('buy')"
+    @keydown.window.shift.s.prevent="if(!posModal.open && manualTrade.order_type === 'market') submitManualOrder('sell')"
+    @keydown.window.escape.prevent="if(posModal.open) posModal.open = false">
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
+        <h2 class="text-2xl font-bold outfit">Trading Terminal</h2>
+
+        <div class="flex items-center gap-2">
+            <!-- Global Status -->
+            <div class="glass-card px-4 py-2 flex items-center gap-3 mr-2">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full animate-pulse"
+                        :class="sys_status === 'running' ? 'bg-emerald-400' : (sys_status === 'paused' ? 'bg-amber-400' : 'bg-slate-500')">
+                    </div>
+                    <span class="text-xs font-bold uppercase tracking-wider"
+                        :class="sys_status === 'running' ? 'text-emerald-400' : (sys_status === 'paused' ? 'text-amber-400' : 'text-slate-400')"
+                        x-text="sys_status === 'running' ? 'COPYING ACTIVE' : (sys_status === 'paused' ? 'PAUSED' : 'STOPPED')"></span>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <button @click="tradeModal.open = true"
+                class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-all mr-4">
+                <i data-feather="plus-circle" class="w-4 h-4"></i> TRADE
+            </button>
+
+            <template x-if="sys_status === 'stopped'">
+                <button @click="startCopy"
+                    class="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg text-sm font-semibold transition-colors">
+                    <i data-feather="play" class="w-4 h-4"></i> Start Engine
+                </button>
+            </template>
+            <template x-if="sys_status === 'running' || sys_status === 'paused'">
+                <div class="flex items-center gap-2">
+                    <button @click="togglePause"
+                        class="flex items-center gap-2 px-3 py-2 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg text-sm font-semibold transition-colors">
+                        <i :data-feather="sys_status === 'paused' ? 'play' : 'pause'" class="w-4 h-4"></i>
+                    </button>
+                    <button @click="stopCopy"
+                        class="flex items-center gap-2 px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-sm font-semibold transition-colors">
+                        <i data-feather="square" class="w-4 h-4"></i> Stop
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Algo Trading Disabled Alerts -->
+    <template x-if="master && master.trade_allowed === false">
+        <div
+            class="mb-6 bg-red-500/10 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+            <i data-feather="alert-triangle" class="w-5 h-5 text-red-400 mt-0.5"></i>
+            <div>
+                <h3 class="text-sm font-bold text-red-400 mb-1">Algo Trading is Disabled on Master MT5 Terminal</h3>
+                <p class="text-xs text-red-300">
+                    Your Master MT5 application is actively blocking trades. You cannot place manual trades from this
+                    UI, and copying will fail.
+                    <br /><strong>Action Required:</strong> Open your Master MetaTrader 5 application and click the
+                    <b>"Algo Trading"</b> button in the top toolbar so it turns green with a play icon.
+                </p>
+            </div>
+        </div>
+    </template>
+
+    <template x-if="slaves.some(s => s.mt5_connected && s.trade_allowed === false)">
+        <div
+            class="mb-6 bg-orange-500/10 border border-orange-500/50 rounded-xl p-4 flex items-start gap-3 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
+            <i data-feather="alert-triangle" class="w-5 h-5 text-orange-400 mt-0.5"></i>
+            <div>
+                <h3 class="text-sm font-bold text-orange-400 mb-1">Algo Trading Disabled on Slave(s)</h3>
+                <p class="text-xs text-orange-300">
+                    One or more target MT5 Slave terminals have Algo Trading disabled. Trades will NOT copy to these
+                    accounts.
+                    <br /><strong>Action Required:</strong> Open the MT5 terminal(s) for the affected slave accounts and
+                    enable <b>"Algo Trading"</b>.
+                </p>
+            </div>
+        </div>
+    </template>
+
+    <!-- Top Metrics Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="glass-card p-4 relative overflow-hidden group">
+            <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-1">Total Equity</div>
+            <div class="text-2xl font-mono font-bold text-white shadow-sm" x-text="'$' + total_equity.toLocaleString()">
+            </div>
+        </div>
+
+        <div class="glass-card p-4 relative overflow-hidden group">
+            <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-1">Open Positions</div>
+            <div class="text-2xl font-mono font-bold text-white shadow-sm" x-text="open_positions"></div>
+        </div>
+
+        <div class="glass-card p-4 relative overflow-hidden group">
+            <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-1">Pending Orders</div>
+            <div class="text-2xl font-mono font-bold text-white shadow-sm" x-text="pending_orders"></div>
+        </div>
+
+        <div class="glass-card p-4 relative overflow-hidden group">
+            <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-1">Floating P&L</div>
+            <div class="text-2xl font-mono font-bold shadow-sm"
+                :class="total_profit >= 0 ? 'text-emerald-400' : 'text-red-400'"
+                x-text="(total_profit >= 0 ? '+$' : '-$') + Math.abs(total_profit).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})">
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left Col: Positions & Actions -->
+        <div class="lg:col-span-2 space-y-6">
+
+            <!-- Quick Actions -->
+            <div class="glass-card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-white flex items-center gap-2"><i data-feather="zap"
+                            class="w-4 h-4 text-amber-400"></i> Global Risk Actions</h3>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <button @click="closePositions('all')"
+                        class="col-span-2 md:col-span-1 py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                        <i data-feather="x-square" class="w-3.5 h-3.5"></i> Close All
+                    </button>
+                    <button @click="closePositions('winners')"
+                        class="py-2 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                        <i data-feather="trending-up" class="w-3.5 h-3.5"></i> Close Win
+                    </button>
+                    <button @click="closePositions('losers')"
+                        class="py-2 px-3 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                        <i data-feather="trending-down" class="w-3.5 h-3.5"></i> Close Loss
+                    </button>
+                    <button @click="closePositions('buy')"
+                        class="py-2 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                        <i data-feather="arrow-up-right" class="w-3.5 h-3.5"></i> Close Buy
+                    </button>
+                </div>
+            </div>
+
+            <!-- Global Positions List -->
+            <div class="glass-card overflow-hidden md:col-span-3">
+                <div class="p-4 border-b border-white/5 flex items-center justify-between bg-black/20">
+                    <h3 class="text-sm font-semibold text-white flex items-center gap-2"><i data-feather="list"
+                            class="w-4 h-4 text-blue-400"></i> Open Positions</h3>
+                    <span class="text-xs bg-white/10 px-2 py-0.5 rounded-md"
+                        x-text="positions.length + ' Total'"></span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm whitespace-nowrap">
+                        <thead class="bg-black/40 text-[10px] uppercase tracking-wider text-slate-400">
+                            <tr>
+                                <th class="px-3 py-3 font-medium">Account</th>
+                                <th class="px-3 py-3 font-medium">Symbol/Type</th>
+                                <th class="px-3 py-3 font-medium text-right">Volume</th>
+                                <th class="px-3 py-3 font-medium text-center">SL</th>
+                                <th class="px-3 py-3 font-medium text-center">TP</th>
+                                <th class="px-3 py-3 font-medium text-right">Open Price</th>
+                                <th class="px-3 py-3 font-medium text-right">Current</th>
+                                <th class="px-3 py-3 font-medium text-right">P&L</th>
+                                <th class="px-3 py-3 font-medium text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                            <template x-for="pos in positions" :key="pos.login + pos.ticket">
+                                <tr class="hover:bg-white/[0.02] transition-colors group">
+                                    <td class="px-3 py-3">
+                                        <div class="text-xs font-mono font-semibold" x-text="'#' + pos.login"></div>
+                                        <div class="text-[10px] text-slate-500"
+                                            x-text="pos.is_master ? '(Master)' : 'Slave'"></div>
+                                    </td>
+                                    <td class="px-3 py-3">
+                                        <div class="font-bold text-white flex items-center gap-1.5">
+                                            <span class="w-1.5 h-1.5 rounded-full"
+                                                :class="pos.type === 'buy' ? 'bg-blue-400' : 'bg-pink-400'"></span>
+                                            <span x-text="pos.symbol"></span>
+                                        </div>
+                                        <div class="text-[10px] uppercase font-bold"
+                                            :class="pos.type === 'buy' ? 'text-blue-400' : 'text-pink-400'"
+                                            x-text="pos.type"></div>
+                                    </td>
+                                    <td class="px-3 py-3 text-right font-mono" x-text="pos.volume.toFixed(2)"></td>
+                                    <td class="px-3 py-3 text-right font-mono text-slate-400 text-xs text-center"
+                                        x-text="pos.sl > 0 ? pos.sl.toFixed(5) : '-'"></td>
+                                    <td class="px-3 py-3 text-right font-mono text-slate-400 text-xs text-center"
+                                        x-text="pos.tp > 0 ? pos.tp.toFixed(5) : '-'"></td>
+                                    <td class="px-3 py-3 text-right font-mono text-slate-300"
+                                        x-text="pos.price_open.toFixed(5)"></td>
+                                    <td class="px-3 py-3 text-right font-mono text-white"
+                                        x-text="pos.price_current.toFixed(5)"></td>
+                                    <td class="px-3 py-3 text-right font-mono font-bold"
+                                        :class="pos.profit >= 0 ? 'text-emerald-400' : 'text-red-400'">
+                                        <span
+                                            x-text="(pos.profit >= 0 ? '+$' : '-$') + Math.abs(pos.profit).toFixed(2)"></span>
+                                    </td>
+                                    <td class="px-3 py-3 text-right">
+                                        <div class="flex justify-end gap-1.5">
+                                            <button @click="managePosition(pos, 'modify')"
+                                                class="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-colors"
+                                                title="Modify SL/TP (Modal)">
+                                                <i data-feather="edit-2" class="w-3.5 h-3.5"></i>
+                                            </button>
+                                            <button @click="managePosition(pos, 'close')"
+                                                class="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded transition-colors"
+                                                title="Partial Close (Modal)">
+                                                <i data-feather="settings" class="w-3.5 h-3.5"></i>
+                                            </button>
+                                            <button @click="quickClosePosition(pos)"
+                                                class="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 hover:text-red-400 rounded transition-colors"
+                                                title="Instant Close Full Volume">
+                                                <i data-feather="x" class="w-3.5 h-3.5"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="positions.length === 0">
+                                <tr>
+                                    <td colspan="6" class="px-4 py-8 text-center text-slate-500 text-sm italic">
+                                        No open positions.
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Position Management Modal -->
+            <div x-show="posModal.open"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                style="display: none;">
+                <div @click.away="posModal.open = false"
+                    class="bg-slate-900 border border-slate-700/50 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl relative">
+                    <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                        <h3 class="font-bold text-white flex items-center gap-2">
+                            <i data-feather="sliders" class="w-4 h-4 text-blue-400"></i>
+                            <span x-text="posModal.action === 'modify' ? 'Modify Position' : 'Close Position'"></span>
+                        </h3>
+                        <button @click="posModal.open = false"
+                            class="text-slate-500 hover:text-white transition-colors"><i data-feather="x"
+                                class="w-5 h-5"></i></button>
+                    </div>
+
+                    <div class="p-5 space-y-4">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Ticket: <span class="text-white font-mono"
+                                    x-text="posModal.pos?.ticket"></span></span>
+                            <span class="text-slate-400">Symbol: <span class="text-white font-bold"
+                                    x-text="posModal.pos?.symbol"></span></span>
+                        </div>
+
+                        <template x-if="posModal.action === 'modify'">
+                            <div class="space-y-3">
+                                <div>
+                                    <label
+                                        class="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Stop
+                                        Loss</label>
+                                    <input type="number" step="0.00001" x-model="posModal.sl"
+                                        class="w-full glass-input px-3 py-2 font-mono text-sm">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Take
+                                        Profit</label>
+                                    <input type="number" step="0.00001" x-model="posModal.tp"
+                                        class="w-full glass-input px-3 py-2 font-mono text-sm">
+                                </div>
+                            </div>
+                        </template>
+
+                        <template x-if="posModal.action === 'close'">
+                            <div>
+                                <label
+                                    class="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Volume
+                                    to Close (Partial Close)</label>
+                                <input type="number" step="0.01" max="100" min="0.01" x-model="posModal.volume"
+                                    class="w-full glass-input px-3 py-2 font-mono text-sm">
+                            </div>
+                        </template>
+
+                        <div x-show="posModal.msg" class="text-xs text-red-400 mt-2 bg-red-500/10 p-2 rounded"
+                            x-text="posModal.msg"></div>
+                    </div>
+
+                    <div class="px-5 py-4 border-t border-white/5 bg-black/20 flex gap-3">
+                        <button @click="posModal.open = false"
+                            class="flex-1 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-white/5 transition-colors">Cancel</button>
+                        <button @click="submitPosModal" :disabled="posModal.loading"
+                            class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50 text-white"
+                            :class="posModal.action === 'modify' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'">
+                            <span x-show="!posModal.loading"
+                                x-text="posModal.action === 'modify' ? 'Save Changes' : 'Confirm Close'"></span>
+                            <span x-show="posModal.loading" class="flex justify-center"><i data-feather="loader"
+                                    class="w-4 h-4 animate-spin"></i></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div x-show="tradeModal.open"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            style="display: none;">
+            <div @click.away="tradeModal.open = false"
+                class="bg-slate-900 border border-t border-slate-700/50 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative">
+
+                <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                    <h3 class="font-bold text-white flex items-center gap-2">
+                        <i data-feather="mouse-pointer" class="w-4 h-4 text-blue-400"></i>
+                        Quick Trade
+                    </h3>
+                    <button @click="tradeModal.open = false"
+                        class="text-slate-500 hover:text-white transition-colors"><i data-feather="x"
+                            class="w-5 h-5"></i></button>
+                </div>
+
+                <div class="p-5">
+                    <p class="text-[10px] text-slate-400 mb-4 bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
+                        Trades placed here execute on the Master node and instantly auto-copy to slaves.</p>
+
+                    <form @submit.prevent="submitManualOrder" class="space-y-4">
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Symbol</label>
+                            <select x-model="manualTrade.symbol" required
+                                class="w-full glass-input px-3 py-2.5 font-mono text-sm bg-slate-900 appearance-none uppercase">
+                                <template x-for="sym in watchlist" :key="sym">
+                                    <option :value="sym" x-text="sym"></option>
+                                </template>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-xs font-semibold text-slate-400">Volume</label>
+                                    <div class="flex gap-1">
+                                        <button type="button" @click="manualTrade.volume = 0.01"
+                                            class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 font-mono transition-colors">.01</button>
+                                        <button type="button" @click="manualTrade.volume = 0.10"
+                                            class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 font-mono transition-colors">.10</button>
+                                        <button type="button" @click="manualTrade.volume = 1.00"
+                                            class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 font-mono transition-colors">1.0</button>
+                                    </div>
+                                </div>
+                                <div class="relative flex items-center">
+                                    <button type="button"
+                                        @click="manualTrade.volume = Math.max(0.01, manualTrade.volume - 0.01)"
+                                        class="absolute left-1 w-7 h-7 flex items-center justify-center rounded bg-black/20 hover:bg-black/40 text-slate-400 font-mono transition-colors">-</button>
+                                    <input type="number" step="0.01" min="0.01" x-model.number="manualTrade.volume"
+                                        required
+                                        class="w-full glass-input px-9 py-2.5 font-mono text-sm text-center font-bold">
+                                    <button type="button" @click="manualTrade.volume = manualTrade.volume + 0.01"
+                                        class="absolute right-1 w-7 h-7 flex items-center justify-center rounded bg-black/20 hover:bg-black/40 text-slate-400 font-mono transition-colors">+</button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Order Type</label>
+                                    <select x-model="manualTrade.order_type"
+                                        class="w-full glass-input px-3 py-2.5 font-mono text-sm bg-slate-900 appearance-none">
+                                        <option value="market">Market (Instant)</option>
+                                        <option value="buy limit">Buy Limit</option>
+                                        <option value="sell limit">Sell Limit</option>
+                                        <option value="buy stop">Buy Stop</option>
+                                        <option value="sell stop">Sell Stop</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Account</label>
+                                    <select x-model="manualTrade.login"
+                                        class="w-full glass-input px-3 py-2.5 font-mono text-sm bg-slate-900 appearance-none">
+                                        <option value="">Master (Auto)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-3">
+                                <div x-show="manualTrade.order_type !== 'market'" class="col-span-3">
+                                    <label class="block text-xs font-semibold text-blue-400 mb-1">Open Price
+                                        (Pending)</label>
+                                    <input type="number" step="0.00001" x-model="manualTrade.price_open"
+                                        class="w-full glass-input px-3 py-2 font-mono text-sm border-blue-500/50"
+                                        placeholder="0.00000">
+                                </div>
+                                <div :class="manualTrade.order_type !== 'market' ? 'col-span-1' : 'col-span-1'">
+                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Stop Loss</label>
+                                    <input type="number" step="0.00001" x-model="manualTrade.sl"
+                                        class="w-full glass-input px-3 py-2 font-mono text-sm" placeholder="0.00000">
+                                </div>
+                                <div :class="manualTrade.order_type !== 'market' ? 'col-span-2' : 'col-span-2'">
+                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Take Profit</label>
+                                    <input type="number" step="0.00001" x-model="manualTrade.tp"
+                                        class="w-full glass-input px-3 py-2 font-mono text-sm" placeholder="0.00000">
+                                </div>
+                            </div>
+
+                            <div x-show="manualOrderMsg" class="text-[10px] font-mono p-2 rounded bg-black/40 border"
+                                :class="manualOrderSuccess ? 'text-emerald-400 border-emerald-500/30' : 'text-red-400 border-red-500/30'"
+                                x-text="manualOrderMsg">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 pt-2" x-show="manualTrade.order_type === 'market'">
+                                <button type="button" @click="submitManualOrder('sell')" :disabled="tradingLock"
+                                    class="py-2.5 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/20 flex flex-col justify-center items-center transition-all disabled:opacity-50">
+                                    <span
+                                        class="text-[10px] text-pink-300 font-bold tracking-widest uppercase mb-0.5">Sell
+                                        (Bid)</span>
+                                    <span class="text-lg font-mono font-bold text-pink-100"
+                                        x-text="activeQuote ? activeQuote.bid.toFixed(5) : '---'"></span>
+                                </button>
+                                <button type="button" @click="submitManualOrder('buy')" :disabled="tradingLock"
+                                    class="py-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 flex flex-col justify-center items-center transition-all disabled:opacity-50">
+                                    <span
+                                        class="text-[10px] text-blue-300 font-bold tracking-widest uppercase mb-0.5">Buy
+                                        (Ask)</span>
+                                    <span class="text-lg font-mono font-bold text-blue-100"
+                                        x-text="activeQuote ? activeQuote.ask.toFixed(5) : '---'"></span>
+                                </button>
+                            </div>
+
+                            <div class="pt-2" x-show="manualTrade.order_type !== 'market'">
+                                <button type="button" @click="submitManualOrder('pending')" :disabled="tradingLock"
+                                    class="w-full py-3 rounded-xl bg-gradient-to-b from-purple-500/20 to-purple-600/30 hover:from-purple-500/30 text-purple-400 font-bold border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)] flex justify-center items-center transition-all disabled:opacity-50 uppercase"
+                                    x-text="'PLACE ' + manualTrade.order_type">
+                                </button>
+                            </div>
+                        </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<script>
+    function dashboardPanel() {
+        return {
+            sys_status: 'stopped',
+            copying: false,
+            master: null,
+            slaves: [],
+
+            total_equity: 0,
+            total_profit: 0,
+            open_positions: 0,
+            pending_orders: 0,
+
+            positions: [],
+
+            tradingLock: false,
+            manualTrade: { symbol: 'EURUSD', volume: 0.01, sl: '', tp: '', login: '', order_type: 'market', price_open: '' },
+            activeQuote: null,
+            watchlist: ['EURUSD'],
+            manualOrderMsg: '',
+            manualOrderSuccess: false,
+
+            posModal: { open: false, pos: null, action: 'modify', volume: 0, sl: 0, tp: 0, loading: false, msg: '' },
+            tradeModal: { open: false },
+
+            init() {
+                this.refreshData();
+                setInterval(() => this.refreshData(), 1500);
+            },
+
+            async refreshData() {
+                try {
+                    // Aggregate dashboard & active quote
+                    const dashRes = await fetch('/api/v1/dashboard');
+                    const dash = await dashRes.json();
+
+                    if (this.manualTrade.symbol) {
+                        const quotesRes = await fetch(`/api/v1/dashboard/quotes?active_symbol=${this.manualTrade.symbol}`);
+                        const quotesData = await quotesRes.json();
+
+                        // Extract unique symbols for the dropdown
+                        if (quotesData.quotes && quotesData.quotes.length > 0) {
+                            this.watchlist = quotesData.quotes.map(q => q.symbol);
+                        }
+
+                        const activeSymData = quotesData.quotes.find(q => q.symbol === this.manualTrade.symbol);
+                        this.activeQuote = activeSymData || null;
+                    }
+
+                    this.sys_status = dash.system_status;
+                    this.copying = dash.copy_active;
+                    this.master = dash.master;
+                    this.slaves = dash.slaves || [];
+                    this.total_equity = dash.total_equity;
+                    this.total_profit = dash.total_profit;
+                    this.open_positions = dash.open_positions;
+                    this.pending_orders = dash.pending_orders;
+
+                    // Positions
+                    const posRes = await fetch('/api/v1/trading/positions');
+                    const posData = await posRes.json();
+
+                    // Flatten positions and sort by time
+                    let allPos = [];
+                    for (const p of posData.positions || []) {
+                        p.login = p.account;
+                        p.is_master = this.master && String(this.master.login) === String(p.account);
+
+                        // Look up trade_allowed status
+                        let trade_allowed = true;
+                        if (p.is_master && this.master && this.master.trade_allowed === false) trade_allowed = false;
+                        if (!p.is_master) {
+                            const slave = this.slaves.find(s => String(s.login) === String(p.account));
+                            if (slave && slave.trade_allowed === false) trade_allowed = false;
+                        }
+                        p.trade_allowed = trade_allowed;
+
+                        allPos.push(p);
+                    }
+                    allPos.sort((a, b) => b.time - a.time);
+                    this.positions = allPos;
+
+                } catch (e) { }
+            },
+
+            async startCopy() { await fetch('/api/v1/trading/copy/start', { method: 'POST' }); this.refreshData(); },
+            async stopCopy() { await fetch('/api/v1/trading/copy/stop', { method: 'POST' }); this.refreshData(); },
+            async togglePause() {
+                const action = this.sys_status === 'paused' ? 'resume' : 'pause';
+                await fetch(`/api/v1/trading/copy/${action}`, { method: 'POST' });
+                this.refreshData();
+            },
+
+            async closePositions(target) {
+                if (!confirm(`Are you sure you want to execute: Close ${target.toUpperCase()}?`)) return;
+                await fetch(`/api/v1/trading/close-${target}`, { method: 'POST' });
+                this.refreshData();
+            },
+
+            managePosition(pos, action) {
+                this.posModal.pos = pos;
+                this.posModal.action = action;
+                this.posModal.volume = pos.volume;
+                this.posModal.sl = pos.sl || 0;
+                this.posModal.tp = pos.tp || 0;
+                this.posModal.msg = '';
+                this.posModal.open = true;
+            },
+
+            async quickClosePosition(pos) {
+                // Instant close at full volume without modal
+                if (!confirm(`Instant Close Position #${pos.ticket} (${pos.symbol} ${pos.volume})?`)) return;
+
+                try {
+                    const res = await fetch('/api/v1/trading/position/close', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            login: pos.login,
+                            ticket: pos.ticket,
+                            volume: pos.volume
+                        })
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                        alert(data.error || 'Failed to close');
+                    }
+                    this.refreshData();
+                } catch (e) {
+                    alert('Request failed');
+                }
+            },
+
+            async submitPosModal() {
+                this.posModal.loading = true;
+                this.posModal.msg = '';
+                try {
+                    const pos = this.posModal.pos;
+                    let url = '';
+                    let payload = { login: pos.login, ticket: pos.ticket };
+
+                    if (this.posModal.action === 'modify') {
+                        url = '/api/v1/trading/position/modify';
+                        payload.symbol = pos.symbol;
+                        payload.sl = parseFloat(this.posModal.sl) || 0;
+                        payload.tp = parseFloat(this.posModal.tp) || 0;
+                    } else {
+                        url = '/api/v1/trading/position/close';
+                        // if volume is modified, it's a partial close
+                        if (parseFloat(this.posModal.volume) > 0 && parseFloat(this.posModal.volume) < pos.volume) {
+                            payload.volume = parseFloat(this.posModal.volume);
+                        }
+                    }
+
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        this.posModal.open = false;
+                        this.refreshData();
+                    } else {
+                        this.posModal.msg = data.error || 'Execution Failed';
+                    }
+                } catch (e) {
+                    this.posModal.msg = 'Network error';
+                }
+                this.posModal.loading = false;
+            },
+
+            async submitManualOrder(btnAction) {
+                if (!this.manualTrade.symbol) return;
+
+                // Determine actual type based on dropdown
+                let finalType = btnAction;
+                if (this.manualTrade.order_type !== 'market') {
+                    finalType = this.manualTrade.order_type; // e.g., 'buy limit'
+                }
+
+                this.tradingLock = true;
+                this.manualOrderMsg = 'Executing...';
+
+                try {
+                    const payload = {
+                        symbol: this.manualTrade.symbol.toUpperCase(),
+                        type: finalType,
+                        volume: parseFloat(this.manualTrade.volume),
+                        sl: parseFloat(this.manualTrade.sl || 0),
+                        tp: parseFloat(this.manualTrade.tp || 0),
+                        price_open: parseFloat(this.manualTrade.price_open || 0),
+                        login: this.manualTrade.login || null
+                    };
+
+                    const res = await fetch('/api/v1/trading/order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await res.json();
+                    if (data.success) {
+                        this.manualOrderSuccess = true;
+                        this.manualOrderMsg = `Success! Ticket #${data.order || data.data?.order}`;
+                        // Optional clear
+                        // this.manualTrade.sl = ''; this.manualTrade.tp = '';
+                    } else {
+                        this.manualOrderSuccess = false;
+                        this.manualOrderMsg = `Error: ${data.error}`;
+                    }
+                } catch (e) {
+                    this.manualOrderSuccess = false;
+                    this.manualOrderMsg = `Network Error`;
+                }
+
+                this.tradingLock = false;
+                setTimeout(() => { if (this.manualOrderSuccess) this.manualOrderMsg = ''; }, 3000);
+            }
+        }
+    }
+</script>
+{% endblock %}

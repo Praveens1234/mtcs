@@ -1,0 +1,10 @@
+<!-- Order row partial -->
+<div class="bg-surface-900/50 rounded-xl p-3 border border-white/5">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-warn/20 text-warn">{{ order.type|upper }}</span>
+            <span class="font-semibold text-sm">{{ order.symbol }}</span>
+        </div>
+        <span class="text-xs font-mono text-gray-400">{{ order.price_open }}</span>
+    </div>
+</div>
