@@ -130,6 +130,14 @@ Return to the **Dashboard** and press the master power button to `START ENGINE`.
 - **Never expose your backend to the public internet** without proper NGINX/Apache reverse proxies equipped with robust SSL implementation and rigid IP-whitelisting.
 - The default configurations and HTTP deployments `localhost:9600` are strictly designed for secure, local machine operation alongside local MT5 instances.
 
+## 🧪 Testing
+
+A new test suite structure has been implemented. To run tests:
+```bash
+pip install pytest
+pytest tests/
+```
+
 ---
 
 <div align="center">
