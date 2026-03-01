@@ -135,3 +135,29 @@ Return to the **Dashboard** and press the master power button to `START ENGINE`.
 <div align="center">
   <p><i>Building the future of algorithmic execution systems.</i></p>
 </div>
+
+## 📱 Android APK (Flutter)
+
+This repository now includes a dedicated Flutter mobile shell in `mobile_app/` that delivers the MTCS web terminal inside a premium Material 3 mobile experience while preserving all existing server-side trading logic.
+
+### Mobile flow
+1. Start MTCS server on your machine (`python run.py`).
+2. Ensure your phone is on the same local network.
+3. In the app, set server endpoint to your machine LAN address, for example: `http://192.168.1.100:9600`.
+4. The app persists this endpoint and reconnects automatically.
+
+### Build APK locally
+```bash
+cd mobile_app
+flutter pub get
+flutter build apk --release
+```
+
+### GitHub Actions APK build
+A CI pipeline is provided at `.github/workflows/build-android-apk.yml`.
+On every push/PR it will:
+- install Flutter and Java 17
+- run `flutter analyze`
+- run `flutter test`
+- build release APK
+- upload `app-release.apk` as workflow artifact (`mtcs-mobile-apk`)
