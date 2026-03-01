@@ -194,7 +194,7 @@ class _TradingWebShellState extends State<TradingWebShell> {
             Padding(
               padding: const EdgeInsets.all(12),
               child: Card(
-                color: Colors.red.withValues(alpha: 0.2),
+                color: Colors.red.withOpacity(0.2),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Text(_errorText!),
