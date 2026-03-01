@@ -1,7 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:mtcs_mobile/providers/accounts_provider.dart';
+import 'package:mtcs_mobile/models/account_model.dart';
 
-class AccountsScreen extends StatelessWidget {
+class AccountsScreen extends StatefulWidget {
   const AccountsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<AccountsScreen> createState() => _AccountsScreenState();
+}
+
+class _AccountsScreenState extends State<AccountsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<AccountsProvider>(context, listen: false).fetchAccounts();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10,22 +26,38 @@ class AccountsScreen extends StatelessWidget {
         title: const Text('Nodes & Accounts'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () {},
+            icon: const Icon(Icons.refresh),
+            onPressed: () => Provider.of<AccountsProvider>(context, listen: false).fetchAccounts(),
           )
         ],
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            _buildSectionHeader(context, "Master Node"),
-            _buildAccountCard(context, "12345678", "Demo Server", "Master", true),
-            const SizedBox(height: 24),
-            _buildSectionHeader(context, "Slave Nodes"),
-            _buildAccountCard(context, "87654321", "Live Server", "Slave 1", false),
-          ],
-        ),
+      body: Consumer<AccountsProvider>(
+        builder: (context, provider, child) {
+          if (provider.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (provider.accounts.isEmpty) {
+            return const Center(child: Text('No accounts mapped.'));
+          }
+
+          return RefreshIndicator(
+            onRefresh: () => provider.fetchAccounts(),
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                if (provider.master != null) ...[
+                  _buildSectionHeader(context, "Master Node"),
+                  _buildAccountCard(context, provider.master!, true),
+                  const SizedBox(height: 24),
+                ],
+                if (provider.slaves.isNotEmpty) ...[
+                  _buildSectionHeader(context, "Slave Nodes"),
+                  ...provider.slaves.map((slave) => _buildAccountCard(context, slave, false)).toList(),
+                ]
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -43,7 +75,7 @@ class AccountsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAccountCard(BuildContext context, String id, String server, String alias, bool isMaster) {
+  Widget _buildAccountCard(BuildContext context, AccountModel account, bool isMaster) {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 12),
@@ -63,18 +95,22 @@ class AccountsScreen extends StatelessWidget {
             color: isMaster ? Theme.of(context).colorScheme.onPrimaryContainer : Theme.of(context).colorScheme.onSecondaryContainer,
           ),
         ),
-        title: Text(alias, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(account.alias, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text("Login: $id"),
-            Text("Server: $server"),
+            Text("Login: ${account.login}"),
+            Text("Server: ${account.server}"),
+            const SizedBox(height: 4),
+            Text("State: ${account.nodeState}", style: TextStyle(color: account.nodeState == 'ACTIVE' ? Colors.green : Colors.red)),
           ],
         ),
         trailing: IconButton(
-          icon: const Icon(Icons.settings_outlined),
-          onPressed: () {},
+          icon: const Icon(Icons.delete_outline, color: Colors.red),
+          onPressed: () {
+            Provider.of<AccountsProvider>(context, listen: false).deleteAccount(account.id);
+          },
         ),
       ),
     );

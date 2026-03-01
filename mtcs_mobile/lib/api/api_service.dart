@@ -4,28 +4,28 @@ import 'package:flutter_client_sse/flutter_client_sse.dart';
 import 'package:flutter_client_sse/constants/sse_request_type_enum.dart';
 
 class ApiService {
-  // Use a default local IP for emulator testing or let user configure
   static String baseUrl = "http://10.0.2.2:9600";
 
   static void setBaseUrl(String url) {
+    if (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
     baseUrl = url;
   }
 
-  // HTTP GET
   static Future<dynamic> get(String endpoint) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl$endpoint'));
-      if (response.statusCode == 200) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         return json.decode(response.body);
       } else {
-        throw Exception('Failed to load data: ${response.statusCode}');
+        throw Exception('Failed GET $endpoint: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      throw Exception('API Error: $e');
+      throw Exception('API Error (GET $endpoint): $e');
     }
   }
 
-  // HTTP POST
   static Future<dynamic> post(String endpoint, Map<String, dynamic> body) async {
     try {
       final response = await http.post(
@@ -36,14 +36,26 @@ class ApiService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return json.decode(response.body);
       } else {
-        throw Exception('Failed to post data: ${response.statusCode}');
+        throw Exception('Failed POST $endpoint: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      throw Exception('API Error: $e');
+      throw Exception('API Error (POST $endpoint): $e');
     }
   }
 
-  // SSE Stream
+  static Future<dynamic> delete(String endpoint) async {
+    try {
+      final response = await http.delete(Uri.parse('$baseUrl$endpoint'));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed DELETE $endpoint: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('API Error (DELETE $endpoint): $e');
+    }
+  }
+
   static Stream<SSEModel> getSseStream(String endpoint) {
     return SSEClient.subscribeToSSE(
       method: SSERequestType.GET,

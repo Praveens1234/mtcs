@@ -1,56 +1,29 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:mtcs_mobile/providers/system_state_provider.dart';
-import 'package:mtcs_mobile/api/api_service.dart';
+import 'package:mtcs_mobile/providers/engine_provider.dart';
+import 'package:mtcs_mobile/providers/trading_provider.dart';
+import 'package:mtcs_mobile/widgets/shared_widgets.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
 
   @override
-  _DashboardScreenState createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  String _totalEquity = "\$0.00";
-  String _floatingPl = "\$0.00";
-
   @override
   void initState() {
     super.initState();
-    _connectSse();
-  }
-
-  void _connectSse() {
-    try {
-      ApiService.getSseStream('/api/sse/stream').listen((event) {
-        if (event.id == '' && event.event == '' && event.data == '') return;
-
-        try {
-          final data = json.decode(event.data ?? '{}');
-          if (mounted) {
-            setState(() {
-              if (data['metrics'] != null && data['metrics']['master'] != null) {
-                final master = data['metrics']['master'];
-                _totalEquity = "\$${master['equity'] ?? '0.00'}";
-                _floatingPl = "\$${master['profit'] ?? '0.00'}";
-              }
-            });
-            Provider.of<SystemStateProvider>(context, listen: false)
-                .updateState(data['engine_status'] ?? 'UNKNOWN', DateTime.now().toIso8601String());
-          }
-        } catch (e) {
-          debugPrint("JSON Parse error: $e");
-        }
-      });
-    } catch (e) {
-      debugPrint("SSE connect error: $e");
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<EngineProvider>(context, listen: false).connectSse();
+      Provider.of<TradingProvider>(context, listen: false).startPollingPositions();
+    });
   }
 
   @override
   void dispose() {
-    ApiService.unsubscribeSse();
+    Provider.of<TradingProvider>(context, listen: false).stopPollingPositions();
     super.dispose();
   }
 
@@ -58,19 +31,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MTCS Engine'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {},
-          )
-        ],
+        title: const Text('MTCS Dashboard'),
       ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
-            // refresh data
-            await Future.delayed(const Duration(seconds: 1));
+            Provider.of<TradingProvider>(context, listen: false).fetchPositions();
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -88,20 +54,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // Open quick trade
-        },
-        icon: const Icon(Icons.flash_on),
-        label: const Text("Trade"),
-      ),
     );
   }
 
   Widget _buildSystemStatusCard(BuildContext context) {
-    return Consumer<SystemStateProvider>(
-      builder: (context, systemState, child) {
-        final isRunning = systemState.status != "DISCONNECTED" && systemState.status != "STOPPED";
+    return Consumer<EngineProvider>(
+      builder: (context, engine, child) {
+        final isRunning = engine.status == "COPYING ACTIVE" || engine.status == "ACTIVE" || engine.status == "RUNNING";
         return Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -124,12 +83,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Container(
-                          width: 8,
-                          height: 8,
+                          width: 10,
+                          height: 10,
                           decoration: BoxDecoration(
                             color: isRunning ? Colors.greenAccent : Colors.redAccent,
                             shape: BoxShape.circle,
@@ -137,7 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          systemState.status,
+                          engine.status,
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -149,10 +108,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 FilledButton.icon(
                   onPressed: () async {
                     try {
-                      final action = isRunning ? 'stop' : 'start';
-                      await ApiService.post('/api/system/engine', {'action': action});
+                      await engine.toggleEngine(!isRunning);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Engine $action command sent')),
+                        SnackBar(content: Text('Engine command sent')),
                       );
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -176,104 +134,129 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildEquityOverview(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "Equity Overview",
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildMetricCard(context, "Total Equity", _totalEquity, Icons.account_balance_wallet_outlined, Colors.blue),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildMetricCard(context, "Floating P/L", _floatingPl, Icons.show_chart, _floatingPl.startsWith('-\$') ? Colors.red : Colors.green),
-            ),
-          ],
-        )
-      ],
-    );
-  }
-
-  Widget _buildMetricCard(BuildContext context, String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: color),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivePositions(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Consumer<EngineProvider>(
+      builder: (context, engine, child) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Active Positions",
+              "Equity Overview",
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
-            TextButton(
-              onPressed: () {},
-              child: const Text("Close All"),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
+            const SizedBox(height: 16),
+            Row(
               children: [
-                Icon(Icons.inbox_outlined, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                const SizedBox(height: 16),
-                Text(
-                  "No active positions",
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                Expanded(
+                  child: MetricCard(
+                    title: "Total Equity",
+                    value: "\$${engine.masterEquity.toStringAsFixed(2)}",
+                    icon: Icons.account_balance_wallet_outlined,
+                    color: Colors.blue,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: MetricCard(
+                    title: "Floating P/L",
+                    value: "\$${engine.masterProfit.toStringAsFixed(2)}",
+                    icon: Icons.show_chart,
+                    color: engine.masterProfit >= 0 ? Colors.green : Colors.red,
                   ),
                 ),
               ],
+            )
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildActivePositions(BuildContext context) {
+    return Consumer<TradingProvider>(
+      builder: (context, trading, child) {
+        final positions = trading.positions;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Active Positions (${positions.length})",
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (positions.isNotEmpty)
+                  TextButton(
+                    onPressed: () {
+                      for (var p in positions) {
+                        trading.closePosition(p.ticket);
+                      }
+                    },
+                    child: const Text("Close All", style: TextStyle(color: Colors.red)),
+                  ),
+              ],
             ),
-          ),
-        ),
-      ],
+            const SizedBox(height: 8),
+            if (positions.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.inbox_outlined, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 16),
+                      Text(
+                        "No active positions",
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: positions.length,
+                itemBuilder: (context, index) {
+                  final p = positions[index];
+                  final isBuy = p.type == 0;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: StatusBadge(status: isBuy ? 'BUY' : 'SELL', isGood: isBuy),
+                      title: Text("${p.symbol}  ${p.volume} lots"),
+                      subtitle: Text("Open: ${p.priceOpen} | Current: ${p.currentPrice}"),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            "\$${p.profit.toStringAsFixed(2)}",
+                            style: TextStyle(
+                              color: p.profit >= 0 ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.grey),
+                            onPressed: () => trading.closePosition(p.ticket),
+                          )
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        );
+      }
     );
   }
 }

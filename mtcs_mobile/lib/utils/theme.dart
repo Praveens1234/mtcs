@@ -10,8 +10,8 @@ class AppTheme {
         primary: Color(0xFF6366f1), // Indigo 500
         secondary: Color(0xFF10b981), // Emerald 500
         surface: Color(0xFF1e293b), // Slate 800
-        background: Color(0xFF0f172a), // Slate 900
         error: Color(0xFFef4444), // Red 500
+        onPrimary: Colors.white,
       ),
       scaffoldBackgroundColor: const Color(0xFF0f172a),
       cardColor: const Color(0xFF1e293b),
@@ -19,6 +19,12 @@ class AppTheme {
         backgroundColor: Color(0xFF0f172a),
         elevation: 0,
         centerTitle: true,
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: Color(0xFF1e293b),
+        selectedItemColor: Color(0xFF6366f1),
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
       ),
       textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
     );
@@ -32,8 +38,8 @@ class AppTheme {
         primary: Color(0xFF4f46e5), // Indigo 600
         secondary: Color(0xFF059669), // Emerald 600
         surface: Colors.white,
-        background: Color(0xFFf8fafc), // Slate 50
         error: Color(0xFFdc2626), // Red 600
+        onPrimary: Colors.white,
       ),
       scaffoldBackgroundColor: const Color(0xFFf8fafc),
       cardColor: Colors.white,
@@ -42,6 +48,12 @@ class AppTheme {
         elevation: 0,
         centerTitle: true,
         foregroundColor: Colors.black,
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: Colors.white,
+        selectedItemColor: Color(0xFF4f46e5),
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
       ),
       textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
     );
